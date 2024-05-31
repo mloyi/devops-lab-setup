@@ -1,70 +1,77 @@
-# Define the provider
-provider "azurerm" {
-  features {}
+# Configure the AWS provider
+provider "aws" {
+  region = "us-west-2"  # Replace with your desired region
 }
 
-# Create a resource group
-resource "azurerm_resource_group" "example" {
-  name     = "example-resources"
-  location = "West US"
-}
-
-# Create a virtual network
-resource "azurerm_virtual_network" "example" {
-  name                = "example-vnet"
-  address_space       = ["10.0.0.0/16"]
-  location            = azurerm_resource_group.example.location
-  resource_group_name = azurerm_resource_group.example.name
+# Create a VPC
+resource "aws_vpc" "example" {
+  cidr_block = "10.0.0.0/16"
 }
 
 # Create a subnet
-resource "azurerm_subnet" "example" {
-  name                 = "example-subnet"
-  resource_group_name  = azurerm_resource_group.example.name
-  virtual_network_name = azurerm_virtual_network.example.name
-  address_prefixes     = ["10.0.1.0/24"]
+resource "aws_subnet" "example" {
+  vpc_id     = aws_vpc.example.id
+  cidr_block = "10.0.1.0/24"
 }
 
-# Create a network interface
-resource "azurerm_network_interface" "example" {
-  name                = "example-nic"
-  location            = azurerm_resource_group.example.location
-  resource_group_name = azurerm_resource_group.example.name
-
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = azurerm_subnet.example.id
-    private_ip_address_allocation = "Dynamic"
-  }
+# Create an internet gateway
+resource "aws_internet_gateway" "example" {
+  vpc_id = aws_vpc.example.id
 }
 
-# Create a virtual machine
-resource "azurerm_linux_virtual_machine" "example" {
-  name                = "example-vm"
-  resource_group_name = azurerm_resource_group.example.name
-  location            = azurerm_resource_group.example.location
-  size                = "Standard_DS1_v2"
-  admin_username      = "adminuser"
+# Create a route table
+resource "aws_route_table" "example" {
+  vpc_id = aws_vpc.example.id
 
-  network_interface_ids = [
-    azurerm_network_interface.example.id,
-  ]
-
-  admin_ssh_key {
-    username   = "adminuser"
-    public_key = file("~/.ssh/id_rsa.pub")
-  }
-
-  os_disk {
-    caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
-  }
-
-  source_image_reference {
-    publisher = "Canonical"
-    offer     = "UbuntuServer"
-    sku       = "18.04-LTS"
-    version   = "latest"
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.example.id
   }
 }
 
+# Associate the route table with the subnet
+resource "aws_route_table_association" "example" {
+  subnet_id      = aws_subnet.example.id
+  route_table_id = aws_route_table.example.id
+}
+
+# Create a security group
+resource "aws_security_group" "example" {
+  vpc_id = aws_vpc.example.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Create an EC2 instance
+resource "aws_instance" "example" {
+  ami           = "ami-0c55b159cbfafe1f0"  # Replace with your desired AMI
+  instance_type = "t2.micro"
+
+  key_name = "my-key"  # Replace with your key pair name
+
+  vpc_security_group_ids = [aws_security_group.example.id]
+  subnet_id              = aws_subnet.example.id
+
+  tags = {
+    Name = "example-instance"
+  }
+}
